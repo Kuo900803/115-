@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工程品管模擬考系統 - 結算加強版</title>
+    
+    <script src="品管考試題庫.js"></script>
+
+    <style>
+        :root { --p: #0288d1; --s: #388e3c; --e: #d32f2f; --bg: #f4f7f9; }
+        body { font-family: "Microsoft JhengHei", sans-serif; background: var(--bg); margin: 0; padding: 15px; color: #333; }
+        .box { max-width: 900px; margin: auto; background: #fff; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .hd { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 10px; margin-bottom: 15px; position: sticky; top: 0; background: #fff; z-index: 5; }
+        #tm { font-size: 1.4em; font-weight: bold; color: var(--e); font-family: monospace; }
+        #qt { font-size: 1.2em; font-weight: bold; margin-bottom: 15px; line-height: 1.6; }
+        .op { display: grid; gap: 10px; margin-bottom: 20px; }
+        button { padding: 12px 15px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; text-align: left; font-size: 1em; transition: 0.2s; }
+        button:hover { background: #f0f7ff; border-color: var(--p); }
+        button.sel { background: var(--p); color: #fff; border-color: var(--p); }
+        .ft { display: flex; justify-content: space-between; border-top: 2px solid #eee; padding-top: 15px; margin-top: 15px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        .p-btn { background: var(--p); color: #fff; }
+        .s-btn { background: var(--s); color: #fff; }
+        #ng { display: grid; grid-template-columns: repeat(auto-fill, minmax(35px, 1fr)); gap: 5px; margin-top: 20px; }
+        .nb { width: 35px; height: 35px; line-height: 35px; text-align: center; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 0.85em; background: #fff; }
+        .nb.dn { background: #e3f2fd; border-color: var(--p); color: var(--p); }
+        .nb.cur { border: 2px solid #333; font-weight: bold; }
+        
+        /* 結算區樣式 */
+        .res { margin-top: 20px; padding: 20px; border-radius: 8px; display: none; }
+        .res.win { background: #fff; border: 2px solid var(--s); display: block; }
+        .res h3 { color: var(--s); margin-top: 0; }
+        
+        /* 結算表格 */
+        .result-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .result-table th, .result-table td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        .result-table th { background: #f8f9fa; position: sticky; top: 50px; }
+        .rt-q { font-weight: bold; margin-bottom: 5px; display: block; color: #444; }
+        .rt-opt { font-size: 0.85em; color: #777; }
+        .tag { padding: 3px 8px; border-radius: 4px; color: #fff; font-size: 0.85em; font-weight: bold; }
+        .tag-ok { background: var(--s); }
+        .tag-no { background: var(--e); }
+        .txt-ok { color: var(--s); font-weight: bold; }
+        .txt-no { color: var(--e); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="box">
+    <div id="exam-view">
+        <div class="hd">
+            <div>題號：<span id="idx">1</span> / <span id="total">0</span></div>
+            <div id="tm">00:00</div>
+            <button class="btn s-btn" onclick="fin()">結束交卷</button>
+        </div>
+        
+        <div id="quiz-area">
+            <div id="qt">正在準備題目...</div>
+            <div class="op" id="os"></div>
+            <div class="ft">
+                <button class="btn p-btn" onclick="mv(-1)">上一題</button>
+                <button class="btn p-btn" onclick="mv(1)">下一題</button>
+            </div>
+            <div id="ng"></div>
+        </div>
+
+        <div id="rs" class="res"></div>
+    </div>
+</div>
+
+<script>
+let exam = [];
+let user = {};
+let cur = 0;
+let clock;
+let ended = false;
+
+function init() {
+    if (typeof questionBank === 'undefined') {
+        document.getElementById('qt').innerHTML = "<b style='color:red'>錯誤：無法讀取題庫！</b><br>請確認檔案名稱已改為「品管考試題庫.js」且放在 HTML 旁。";
+        return;
+    }
+    exam = [...questionBank].sort(() => Math.random() - 0.5).slice(0, 100);
+    document.getElementById('total').innerText = exam.length;
+    drawNav();
+    draw();
+    timer(5400); 
+}
+
+function drawNav() {
+    const container = document.getElementById('ng');
+    container.innerHTML = exam.map((_, i) => `<div class="nb" id="nb-${i}" onclick="jump(${i})">${i + 1}</div>`).join('');
+}
+
+function draw() {
+    if(ended) return;
+    const q = exam[cur];
+    document.getElementById('idx').innerText = cur + 1;
+    document.getElementById('qt').innerText = q.q;
+    const os = document.getElementById('os');
+    os.innerHTML = '';
+    
+    q.options.forEach(opt => {
+        const val = opt.match(/\(([A-D])\)/)?.[1] || opt.charAt(0); 
+        const btn = document.createElement('button');
+        btn.innerText = opt;
+        if (user[cur] === val) btn.classList.add('sel');
+        btn.onclick = () => sv(val);
+        os.appendChild(btn);
+    });
+
+    document.querySelectorAll('.nb').forEach(el => el.classList.remove('cur'));
+    document.getElementById(`nb-${cur}`).classList.add('cur');
+}
+
+function sv(v) {
+    if (ended) return;
+    user[cur] = v;
+    document.getElementById(`nb-${cur}`).classList.add('dn');
+    draw();
+}
+
+function mv(s) {
+    const t = cur + s;
+    if (t >= 0 && t < exam.length) { cur = t; draw(); }
+}
+
+function jump(i) { if(!ended) { cur = i; draw(); } }
+
+function timer(sec) {
+    const limit = Date.now() + sec * 1000;
+    clock = setInterval(() => {
+        const diff = Math.ceil((limit - Date.now()) / 1000);
+        if (diff <= 0) { clearInterval(clock); fin(true); }
+        else {
+            const m = Math.floor(diff/60).toString().padStart(2,'0');
+            const s = (diff%60).toString().padStart(2,'0');
+            document.getElementById('tm').innerText = `${m}:${s}`;
+        }
+    }, 1000);
+}
+
+function fin(auto = false) {
+    if (ended) return;
+    const answeredCount = Object.keys(user).length;
+    if (!auto && answeredCount < exam.length) {
+        if (!confirm(`還有 ${exam.length - answeredCount} 題未寫，確定交卷？`)) return;
+    }
+    ended = true;
+    clearInterval(clock);
+    
+    let score = 0;
+    let reportHtml = `
+        <table class="result-table">
+            <thead>
+                <tr>
+                    <th width="10%">題號</th>
+                    <th>題目內容</th>
+                    <th width="15%">你的答案</th>
+                    <th width="15%">正確答案</th>
+                    <th width="10%">判定</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+    exam.forEach((q, i) => {
+        const uAns = user[i] || "未答";
+        const isCorrect = uAns === q.answer;
+        if (isCorrect) score++;
+
+        reportHtml += `
+            <tr>
+                <td>${i + 1}</td>
+                <td>
+                    <span class="rt-q">${q.q}</span>
+                    <span class="rt-opt">${q.options.join(' | ')}</span>
+                </td>
+                <td class="${isCorrect ? 'txt-ok' : 'txt-no'}">${uAns}</td>
+                <td class="txt-ok">${q.answer}</td>
+                <td>${isCorrect ? '<span class="tag tag-ok">對</span>' : '<span class="tag tag-no">錯</span>'}</td>
+            </tr>`;
+    });
+
+    reportHtml += `</tbody></table>`;
+
+    const finalScore = Math.round((score / exam.length) * 100);
+    const rs = document.getElementById('rs');
+    rs.innerHTML = `
+        <h3>測驗結果報告</h3>
+        <p style="font-size: 1.2em;">總分：<b style="color:var(--e); font-size: 1.5em;">${finalScore}</b> 分</p>
+        <p>統計：答對 ${score} 題 / 總計 ${exam.length} 題</p>
+        <hr>
+        ${reportHtml}
+    `;
+    rs.className = 'res win';
+    
+    // 隱藏題目作答區，顯示報表
+    document.getElementById('quiz-area').style.display = 'none';
+    window.scrollTo(0, 0);
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
